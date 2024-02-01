@@ -1,0 +1,69 @@
+image: node:18-alpine
+
+definitions:
+  steps:
+    - step: &step-test
+        caches:
+          - node
+        name: Test
+        script:
+          - apk update
+          - yarn install
+          - yarn run lint
+          - yarn run generate
+          - yarn run test
+          - echo "Everything is awesome!"
+pipelines:
+  default:
+    - step: *step-test
+  branches:
+    develop:
+      - step: *step-test
+      - step:
+          name: Build
+          image: node:18
+          script:
+            - yarn install
+            - yarn run generate:development
+          artifacts:
+            - dist/**
+      - step:
+          name: Deploy to S3
+          image: atlassian/default-image:2
+          deployment: development
+          script:
+            - export AWS_ACCESS_KEY_ID
+            - export AWS_SECRET_ACCESS_KEY
+            - pipe: atlassian/aws-s3-deploy:1.6.0
+              variables:
+                AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+                AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+                AWS_DEFAULT_REGION: "ap-northeast-1"
+                S3_BUCKET: "dev-bucket"
+                LOCAL_PATH: "dist/"
+                DELETE_FLAG: "true"
+    release:
+      - step: *step-test
+      - step:
+          name: Build
+          image: node:18
+          script:
+            - yarn install
+            - yarn run generate:production
+          artifacts:
+            - dist/**
+      - step:
+          name: Deploy to S3
+          image: atlassian/default-image:2
+          deployment: production
+          script:
+            - export AWS_ACCESS_KEY_ID
+            - export AWS_SECRET_ACCESS_KEY
+            - pipe: atlassian/aws-s3-deploy:1.6.0
+              variables:
+                AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+                AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+                AWS_DEFAULT_REGION: "ap-northeast-1"
+                S3_BUCKET: "prd-bucket"
+                LOCAL_PATH: "dist/"
+                DELETE_FLAG: "true"
